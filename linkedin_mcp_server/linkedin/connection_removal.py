@@ -38,6 +38,7 @@ logger = logging.getLogger(__name__)
 _SETTLE_MS = 1_500
 _MAX_SCROLLS = 30
 _MENU_TIMEOUT_MS = 5_000
+_FIRST_CLICK_TIMEOUT_MS = 1_500
 _DIALOG_TIMEOUT_MS = 8_000
 
 # Visible-text fallbacks for the two controls that have no other identity.
@@ -231,6 +232,17 @@ class ConnectionRemover:
             "Could not find exactly one menu button in the connection's row.",
         )
 
+    async def _wait_for_menu(self, opener: Locator) -> None:
+        menu = self._page.locator('[role="menu"]:visible').last
+        try:
+            await menu.wait_for(state="visible", timeout=_FIRST_CLICK_TIMEOUT_MS)
+            return
+        except Exception:
+            if await opener.get_attribute("aria-expanded") != "false":
+                raise
+        await opener.click()
+        await menu.wait_for(state="visible", timeout=_MENU_TIMEOUT_MS)
+
     async def _closed_menu_state(self, opener: Locator) -> dict[str, Any]:
         try:
             state = await opener.evaluate(CLOSED_MENU_STATE_JS)
@@ -263,9 +275,7 @@ class ConnectionRemover:
         opener = await self._menu_button(link)
         await opener.click()
         try:
-            await self._page.locator('[role="menu"]:visible').last.wait_for(
-                state="visible", timeout=_MENU_TIMEOUT_MS
-            )
+            await self._wait_for_menu(opener)
         except Exception:
             raise ConnectionFailure(
                 ConnectionErrorCode.SELECTOR_NOT_FOUND,
