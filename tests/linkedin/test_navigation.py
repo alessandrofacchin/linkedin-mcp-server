@@ -14,6 +14,7 @@ from linkedin_mcp_server.core.exceptions import (
     OffLinkedInLandingError,
     ProxyConnectionError,
 )
+from linkedin_mcp_server.core.nav_pacing import NavigationBudgetExceeded
 from linkedin_mcp_server.linkedin import session as session_module
 from linkedin_mcp_server.linkedin.capture import SectionCapture
 from linkedin_mcp_server.linkedin.content import PageContentReader
@@ -63,6 +64,34 @@ class TestNavigationDiagnostics:
 
         assert mock_page.goto.await_count == 2
         mock_resolve.assert_awaited_once()
+
+    async def test_an_exhausted_navigation_budget_is_not_retried_or_rewritten(
+        self, mock_page, monkeypatch
+    ):
+        navigator = PageNavigator(PageSession(mock_page))
+        monkeypatch.setattr(type(mock_page), "__module__", "patchright.async_api")
+        exhausted = NavigationBudgetExceeded("budget reached", 42)
+        goto = AsyncMock(side_effect=exhausted)
+        monkeypatch.setattr(
+            "linkedin_mcp_server.linkedin.navigation.goto_reporting_proxy_errors",
+            goto,
+        )
+
+        with (
+            patch(
+                "linkedin_mcp_server.linkedin.navigation.resolve_remember_me_prompt",
+                new_callable=AsyncMock,
+                return_value=True,
+            ) as mock_resolve,
+            pytest.raises(NavigationBudgetExceeded) as raised,
+        ):
+            await navigator._goto_with_auth_checks(
+                "https://www.linkedin.com/in/testuser/"
+            )
+
+        assert raised.value is exhausted
+        goto.assert_awaited_once()
+        mock_resolve.assert_not_awaited()
 
     async def test_a_chooser_wait_that_ends_on_a_portal_is_not_an_expired_session(
         self, mock_page

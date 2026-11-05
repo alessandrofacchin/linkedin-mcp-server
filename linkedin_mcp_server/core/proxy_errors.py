@@ -16,6 +16,7 @@ from patchright.async_api import TimeoutError as PlaywrightTimeoutError
 from linkedin_mcp_server.config.schema import BrowserConfig
 
 from .exceptions import ProxyConnectionError
+from .nav_pacing import pace_navigation
 
 logger = logging.getLogger(__name__)
 
@@ -289,6 +290,7 @@ async def goto_reporting_proxy_errors(page: Any, url: str, **kwargs: Any) -> Any
     The navigation budget starts when the browser sends the request, not when
     this function is called. See :data:`NAVIGATION_BUDGET_MS`.
     """
+    await pace_navigation(url)
     try:
         return await _goto_within_budget(page, url, **kwargs)
     except Exception as exc:
