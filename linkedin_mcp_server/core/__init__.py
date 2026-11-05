@@ -22,6 +22,12 @@ from .exceptions import (
     ProxyConnectionError,
     RateLimitError,
 )
+from .nav_pacing import (
+    NavigationBudgetExceeded,
+    loads_needed_fit,
+    pace_navigation,
+    remaining_loads,
+)
 from .proxy_errors import (
     as_proxy_error,
     goto_reporting_proxy_errors,
@@ -62,6 +68,7 @@ __all__ = [
     "detect_auth_barrier_quick",
     "ElementNotFoundError",
     "LinkedInOperationError",
+    "NavigationBudgetExceeded",
     "NetworkError",
     "OffLinkedInLandingError",
     "PageReadError",
@@ -70,6 +77,9 @@ __all__ = [
     "RateLimitError",
     "as_proxy_error",
     "goto_reporting_proxy_errors",
+    "loads_needed_fit",
+    "pace_navigation",
+    "remaining_loads",
     "is_proxy_error",
     "proxy_hint",
     "raise_if_proxy_configured",

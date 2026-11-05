@@ -11,7 +11,12 @@ from linkedin_mcp_server.core.exceptions import (
     RateLimitError,
     PageReadError,
 )
-from linkedin_mcp_server.error_handler import CodedToolError, raise_tool_error
+from linkedin_mcp_server.core.nav_pacing import NavigationBudgetExceeded
+from linkedin_mcp_server.error_handler import (
+    CodedToolError,
+    ErrorCode,
+    raise_tool_error,
+)
 from linkedin_mcp_server.exceptions import (
     AuthenticationInProgressError,
     AuthMissingOnOwnerError,
@@ -46,6 +51,23 @@ def test_raises_tool_error_for_rate_limit_default_wait():
     error = RateLimitError("Rate limited")
     with pytest.raises(ToolError, match="Wait 300 seconds"):
         raise_tool_error(error)
+
+
+def test_navigation_budget_surfaces_its_message_and_retry_after(monkeypatch):
+    monkeypatch.setattr(
+        "linkedin_mcp_server.error_handler.build_issue_diagnostics",
+        lambda *args, **kwargs: (_ for _ in ()).throw(
+            AssertionError("diagnostics should not run")
+        ),
+    )
+    error = NavigationBudgetExceeded("Local budget reached; next slot in 42s", 42)
+
+    with pytest.raises(ToolError, match="next slot in 42s") as raised:
+        raise_tool_error(error)
+
+    assert isinstance(raised.value, CodedToolError)
+    assert raised.value.code == ErrorCode.RATE_LIMITED
+    assert raised.value.retry_after == 42
 
 
 def test_raises_tool_error_for_profile_not_found():

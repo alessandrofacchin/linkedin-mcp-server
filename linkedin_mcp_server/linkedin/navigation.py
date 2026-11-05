@@ -19,6 +19,7 @@ from linkedin_mcp_server.core.destination import (
     raise_if_off_linkedin,
 )
 from linkedin_mcp_server.core.exceptions import AuthenticationError
+from linkedin_mcp_server.core.nav_pacing import NavigationBudgetExceeded
 from linkedin_mcp_server.core.proxy_errors import (
     NAVIGATION_BUDGET_MS,
     goto_reporting_proxy_errors,
@@ -223,6 +224,8 @@ class PageNavigator:
                     "extractor-after-goto",
                     extra={"target_url": url, "wait_until": wait_until},
                 )
+            except NavigationBudgetExceeded:
+                raise
             except Exception as exc:
                 # Ahead of the traces below: they record the raw exception text,
                 # which for a proxy failure can quote the proxy URL and land a

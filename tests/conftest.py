@@ -147,6 +147,17 @@ def ignore_the_developers_environment(monkeypatch):
 
 
 @pytest.fixture(autouse=True)
+def isolate_navigation_pacing(ignore_the_developers_environment, tmp_path, monkeypatch):
+    monkeypatch.setattr(
+        "linkedin_mcp_server.core.nav_pacing.NAV_LOG_PATH",
+        tmp_path / "nav-times.json",
+    )
+    monkeypatch.setenv("LINKEDIN_NAV_MIN_GAP", "0")
+    monkeypatch.setenv("LINKEDIN_NAV_JITTER", "0")
+    monkeypatch.setenv("LINKEDIN_NAV_MAX_PER_HOUR", "1000000")
+
+
+@pytest.fixture(autouse=True)
 def isolate_profile_dir(ignore_the_developers_environment, tmp_path, monkeypatch):
     """Redirect profile directory to tmp_path via config and DEFAULT_PROFILE_DIR.
 

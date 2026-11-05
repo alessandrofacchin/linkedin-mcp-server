@@ -15,6 +15,7 @@ from fastmcp.exceptions import NotFoundError, ToolError, ValidationError
 from fastmcp.server.middleware import CallNext, Middleware, MiddlewareContext
 from fastmcp.tools import ToolResult
 
+from linkedin_mcp_server.core.nav_pacing import NavigationBudgetExceeded
 from linkedin_mcp_server.core.proxy_errors import (
     redact_proxy_credentials,
     redacted_copy,
@@ -416,6 +417,15 @@ def _shape_tool_error(exception: Exception, context: str = "") -> NoReturn:
             f"Rate limit detected. Wait {wait_time} seconds before trying again.",
             ErrorCode.RATE_LIMITED,
             retry_after=wait_time,
+        ) from exception
+
+    # Diagnostics-free, following RateLimitError: the local budget doing its job.
+    elif isinstance(exception, NavigationBudgetExceeded):
+        logger.warning("Navigation budget reached%s: %s", ctx, exception)
+        raise CodedToolError(
+            str(exception),
+            ErrorCode.RATE_LIMITED,
+            retry_after=exception.retry_after_seconds,
         ) from exception
 
     elif isinstance(exception, ProfileNotFoundError):

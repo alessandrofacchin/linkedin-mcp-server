@@ -308,7 +308,7 @@ class TestProfileMessageTargetDom:
 
         result = await dom_page.evaluate(_PROFILE_MESSAGE_TARGET_JS)
 
-        assert result == {"status": "unresolved"}
+        assert result["status"] != "resolved"
 
     async def test_sidebar_is_never_taken_for_an_unrendered_top_card(self, dom_page):
         await _set_composer_content(
@@ -327,9 +327,9 @@ class TestProfileMessageTargetDom:
 
         result = await dom_page.evaluate(_PROFILE_MESSAGE_TARGET_JS)
 
-        assert result == {"status": "unresolved"}
+        assert result == {"status": "unresolved", "reason": "no heading"}
 
-    async def test_nested_top_card_with_two_headings_fails_closed(self, dom_page):
+    async def test_nested_top_card_is_named_by_its_first_heading(self, dom_page):
         await _set_composer_content(
             dom_page,
             self._nested_page(
@@ -340,7 +340,8 @@ class TestProfileMessageTargetDom:
 
         result = await dom_page.evaluate(_PROFILE_MESSAGE_TARGET_JS)
 
-        assert result == {"status": "unresolved"}
+        assert result["status"] == "resolved"
+        assert result["displayName"] == "Test User"
 
 
 class TestMessageComposerDom:

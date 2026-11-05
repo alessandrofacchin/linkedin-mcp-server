@@ -35,7 +35,12 @@ from linkedin_mcp_server.exceptions import (
     LinuxBrowserDependencyError,
 )
 from linkedin_mcp_server.profile_lease import get_profile_lease
+from patchright.async_api import Page
+
 from linkedin_mcp_server.linkedin import LinkedInExtractor
+from linkedin_mcp_server.linkedin.connection_removal import ConnectionRemover
+from linkedin_mcp_server.linkedin.navigation import PageNavigator
+from linkedin_mcp_server.linkedin.session import PageSession
 from linkedin_mcp_server.server_role import (
     ServerRole,
     a_held_profile_means_this_owner_must_go,
@@ -250,6 +255,20 @@ async def get_ready_extractor(
     tool_name: str,
 ) -> LinkedInExtractor:
     """Run bootstrap gating, then acquire an authenticated extractor."""
+    return LinkedInExtractor(await _get_ready_page(ctx, tool_name=tool_name))
+
+
+async def get_ready_connection_remover(
+    ctx: Context | None,
+    *,
+    tool_name: str,
+) -> ConnectionRemover:
+    """The same gating as :func:`get_ready_extractor`, for connection removal."""
+    session = PageSession(await _get_ready_page(ctx, tool_name=tool_name))
+    return ConnectionRemover(session, PageNavigator(session))
+
+
+async def _get_ready_page(ctx: Context | None, *, tool_name: str) -> Page:
     try:
         await ensure_tool_ready_or_raise(tool_name, ctx)
         browser = await get_or_create_browser()
@@ -260,7 +279,7 @@ async def get_ready_extractor(
         if _browser_is_unusable(browser):
             browser = await _shut_down_unusable_browser(browser)
         await ensure_authenticated()
-        return LinkedInExtractor(browser.page)
+        return browser.page
     except AuthenticationError as e:
         # Boundary validation may run first, but no tool work has started here,
         # so the client may safely run the call again once it has signed in.
