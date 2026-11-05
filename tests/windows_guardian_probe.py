@@ -4343,7 +4343,7 @@ async def _browser_launch_owner(root: Path, controls: dict[str, str]) -> int:
     driver = await asyncio.wait_for(
         async_playwright().start(), _remaining_browser_seconds(deadline)
     )
-    process = driver._impl_obj._connection._transport._proc
+    process = driver._impl_obj._connection._transport._proc  # ty: ignore[unresolved-attribute]
     node_handle = _asyncio_process_handle(process)
     win32job.AssignProcessToJobObject(inner, node_handle)
     node_pid = int(process.pid)
