@@ -91,30 +91,34 @@ _PROFILE_MESSAGE_TARGET_JS = r"""() => {
     const main = document.querySelector('main');
     if (!main) return {status: 'unresolved'};
 
-    // The top card is the first section that wraps no other section. LinkedIn
-    // nests it inside a wrapper section and has moved the name between h1 and
-    // h2, so neither its depth nor its heading level is pinned. It is chosen
-    // before its heading is checked, so a card whose name has not rendered yet
-    // stays unresolved instead of yielding to the next section. Sidebar
-    // sections are skipped: they carry other people's Message links.
-    const section = Array.from(main.querySelectorAll('section')).find(
-        element =>
-            visible(element) &&
-            !element.closest('aside') &&
-            !element.querySelector('section')
+    // The top card is the section of the first visible non-sidebar heading.
+    // Sidebar sections are skipped: they carry other people's Message links.
+    const firstHeading = Array.from(main.querySelectorAll('h1, h2, h3')).find(
+        element => visible(element) && !element.closest('aside')
     );
-    if (!section) return {status: 'unresolved'};
-    const headings = Array.from(section.querySelectorAll('h1, h2, h3')).filter(visible);
+    if (!firstHeading) return {status: 'unresolved', reason: 'no heading'};
+    const section = firstHeading.closest('section');
+    if (!section || !main.contains(section)) {
+        return {status: 'unresolved', reason: 'name heading outside a section'};
+    }
+    const headings = [firstHeading];
     const visibleComposeAnchors = Array.from(
         section.querySelectorAll('a[href*="/messaging/compose/"]')
-    ).filter(anchor => visible(anchor) && anchor.closest('section') === section);
+    ).filter(anchor => visible(anchor) && !anchor.closest('aside'));
     const composeAnchors = visibleComposeAnchors.filter(active);
-    if (
-        headings.length !== 1 ||
-        composeAnchors.length > 1 ||
-        (composeAnchors.length === 1 && visibleComposeAnchors.length !== 1)
-    ) {
-        return {status: 'unresolved'};
+    const recipientOf = anchor => {
+        const href = anchor.getAttribute('href') || anchor.href || '';
+        if (!validComposeHref(href)) return null;
+        const url = new URL(href, window.location.href);
+        const value = url.searchParams.get('recipient') || url.searchParams.get('profileUrn') || '';
+        return value.trim().replace(/^urn:li:fsd_profile:/, '');
+    };
+    const recipients = new Set(visibleComposeAnchors.map(recipientOf));
+    if (recipients.has(null) || recipients.size > 1) {
+        return {
+            status: 'unresolved',
+            reason: `anchors=${visibleComposeAnchors.length} recipients=${[...recipients].join(',')}`,
+        };
     }
     if (composeAnchors.length === 0) {
         return visibleComposeAnchors.length === 0
