@@ -13,3 +13,5 @@ knowledge lives under `docs/`.
 - [Pinned fork with pacing, send fixes and connection removal](specs/2026-11-05-fork-hardening-and-connection-removal.md)
 
 ## Plans
+
+- [Pinned fork with pacing, send fixes and connection removal — plan](plans/2026-11-05-fork-hardening-and-connection-removal.md)
