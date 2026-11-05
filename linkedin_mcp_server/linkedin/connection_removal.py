@@ -90,6 +90,29 @@ DIALOG_BUTTONS_JS = r"""
   }))
 """
 
+# Runs in the page (diagnostics): why a clicked menu opener shows no menu.
+CLOSED_MENU_STATE_JS = r"""
+(e) => {
+  const b = e.getBoundingClientRect();
+  const hit = document.elementFromPoint(b.x + b.width / 2, b.y + b.height / 2);
+  return {
+    box: {x: b.x, y: b.y, width: b.width, height: b.height},
+    viewport: {width: innerWidth, height: innerHeight},
+    outer: {width: outerWidth, height: outerHeight},
+    scroll: {x: scrollX, y: scrollY},
+    expanded: e.getAttribute('aria-expanded'),
+    hit: hit && {
+      tag: hit.tagName,
+      role: hit.getAttribute('role'),
+      inOpener: hit === e || e.contains(hit),
+      html: hit.outerHTML.replace(/\s+/g, ' ').replace(/ class="[^"]*"/g, '').slice(0, 300),
+    },
+    hasFocus: document.hasFocus(),
+    visibility: document.visibilityState,
+  };
+}
+"""
+
 # Runs in the page: bring the last row into view so the next batch loads.
 SCROLL_JS = r"""
 () => {
@@ -208,6 +231,17 @@ class ConnectionRemover:
             "Could not find exactly one menu button in the connection's row.",
         )
 
+    async def _closed_menu_state(self, opener: Locator) -> dict[str, Any]:
+        try:
+            state = await opener.evaluate(CLOSED_MENU_STATE_JS)
+            state["menusAll"] = await self._page.locator('[role="menu"]').count()
+            state["menusVisible"] = await self._page.locator(
+                '[role="menu"]:visible'
+            ).count()
+            return {"menuState": state}
+        except Exception:
+            return {}
+
     async def _menu_items(self) -> list[str]:
         items = self._page.locator(
             '[role="menu"]:visible [role="menuitem"], [role="menu"]:visible li'
@@ -237,6 +271,7 @@ class ConnectionRemover:
                 ConnectionErrorCode.SELECTOR_NOT_FOUND,
                 "The connection's menu did not open.",
                 username=slug,
+                **await self._closed_menu_state(opener),
             ) from None
         # The menu just opened: the page can hold other, hidden menus.
         menu = self._page.locator('[role="menu"]:visible').last
