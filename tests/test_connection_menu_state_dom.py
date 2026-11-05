@@ -20,6 +20,48 @@ ROW = (
 )
 
 
+SWALLOWING_ROW = (
+    "<main><div><a href='/in/ada/'>Ada</a>"
+    "<button aria-expanded='false' id='b'>more</button></div>"
+    "<script>let n = 0;"
+    "document.getElementById('b').addEventListener('click', (e) => {"
+    "if (++n < 2) return;"
+    "e.target.setAttribute('aria-expanded', 'true');"
+    "const m = document.createElement('div');"
+    "m.setAttribute('role', 'menu'); m.innerHTML = '<div role=\\'menuitem\\'>Remove connection</div>';"
+    "document.body.appendChild(m);});</script></main>"
+)
+
+
+async def test_a_swallowed_first_click_is_retried_once(monkeypatch):
+    try:
+        playwright = await async_playwright().start()
+        browser = await playwright.chromium.launch(channel="chromium", headless=True)
+    except Exception:
+        pytest.skip("chromium is not installed")
+    try:
+        page = await browser.new_page()
+        await page.set_content(SWALLOWING_ROW)
+        remover = ConnectionRemover(PageSession(page), MagicMock())
+
+        async def stay_on_page(url: str) -> None:
+            return None
+
+        monkeypatch.setattr(remover, "_goto", stay_on_page)
+        monkeypatch.setattr(
+            "linkedin_mcp_server.linkedin.connection_removal._SETTLE_MS", 10
+        )
+        monkeypatch.setattr(
+            "linkedin_mcp_server.linkedin.connection_removal._FIRST_CLICK_TIMEOUT_MS",
+            200,
+        )
+        result = await remover.remove("ada", dry_run=True)
+        assert result["status"] == "WOULD_REMOVE"
+    finally:
+        await browser.close()
+        await playwright.stop()
+
+
 async def test_a_menu_that_never_opens_reports_the_page_state(monkeypatch):
     try:
         playwright = await async_playwright().start()
