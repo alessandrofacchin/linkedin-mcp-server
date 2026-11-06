@@ -62,22 +62,22 @@ async def test_second_load_waits_min_gap_plus_jitter(pacing):
 
 
 async def test_cap_raises_with_retry_after(pacing):
-    pacing.write([NOW - 3000 + i for i in range(15)])
+    pacing.write([NOW - 3000 + i for i in range(80)])
 
     with pytest.raises(NavigationBudgetExceeded) as raised:
         await pace_navigation(URL)
 
     assert raised.value.retry_after_seconds == 600
-    assert "15/hour" in str(raised.value)
+    assert "80/hour" in str(raised.value)
     assert pacing.sleeps == []
 
 
 async def test_old_entries_expire(pacing):
-    pacing.write([NOW - 4000] * 15 + [NOW - 90000])
+    pacing.write([NOW - 4000] * 80 + [NOW - 90000])
 
     await pace_navigation(URL)
 
-    assert json.loads(pacing.log.read_text()) == [*([NOW - 4000] * 15), NOW]
+    assert json.loads(pacing.log.read_text()) == [*([NOW - 4000] * 80), NOW]
 
 
 @pytest.mark.parametrize(
@@ -119,9 +119,9 @@ async def test_env_overrides(pacing, monkeypatch):
 def test_remaining_loads(pacing):
     pacing.write([NOW - 10 * i for i in range(7)])
 
-    assert remaining_loads() == 8
-    assert loads_needed_fit(8)
-    assert not loads_needed_fit(9)
+    assert remaining_loads() == 73
+    assert loads_needed_fit(73)
+    assert not loads_needed_fit(74)
 
 
 async def test_goto_wrapper_paces_before_navigating(monkeypatch):
@@ -146,13 +146,13 @@ async def test_goto_wrapper_paces_before_navigating(monkeypatch):
 
 
 async def test_daily_cap_raises_with_clear_message(pacing):
-    pacing.write([NOW - 4000 - i for i in range(50)])
+    pacing.write([NOW - 4000 - i for i in range(240)])
 
     with pytest.raises(NavigationBudgetExceeded) as raised:
         await pace_navigation(URL)
 
-    assert "daily page-load budget reached (50/24h)" in str(raised.value)
-    assert "next slot in 22h 52m" in str(raised.value)
+    assert "daily page-load budget reached (240/24h)" in str(raised.value)
+    assert "next slot in 22h 49m" in str(raised.value)
     assert "Stop LinkedIn work for today." in str(raised.value)
     assert pacing.sleeps == []
 

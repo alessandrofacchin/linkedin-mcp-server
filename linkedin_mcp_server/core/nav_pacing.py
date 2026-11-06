@@ -30,11 +30,11 @@ def _now() -> float:
 
 
 def _max_per_hour() -> int:
-    return int(os.environ.get("LINKEDIN_NAV_MAX_PER_HOUR", "15"))
+    return int(os.environ.get("LINKEDIN_NAV_MAX_PER_HOUR", "80"))
 
 
 def _max_per_day() -> int:
-    return int(os.environ.get("LINKEDIN_NAV_MAX_PER_DAY", "50"))
+    return int(os.environ.get("LINKEDIN_NAV_MAX_PER_DAY", "240"))
 
 
 def _lockout_seconds() -> float:
