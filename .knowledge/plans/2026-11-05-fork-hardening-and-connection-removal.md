@@ -27,7 +27,7 @@ spec: ../specs/2026-11-05-fork-hardening-and-connection-removal.md
 - AGENTS.md mutation rule: before committing a test, break the behaviour it covers and watch it fail.
 - Conventional commits `type(scope): Subject`; end messages with `Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>`.
 - No LinkedIn calls during Tasks 1–7. Live use starts only in Task 9, after Alessandro has merged the PR.
-- Pacing env names and defaults, verbatim: `LINKEDIN_NAV_MIN_GAP=20`, `LINKEDIN_NAV_JITTER=25`, `LINKEDIN_NAV_MAX_PER_HOUR=30`; log `~/.linkedin-mcp/nav-times.json`; exempt paths `/login`, `/checkpoint`, `/uas/`, `/authwall`; only hosts ending in `linkedin.com`.
+- Pacing env names and defaults, verbatim: `LINKEDIN_NAV_MIN_GAP=20`, `LINKEDIN_NAV_JITTER=25`, `LINKEDIN_NAV_MAX_PER_HOUR=15`, `LINKEDIN_NAV_MAX_PER_DAY=50`; log `~/.linkedin-mcp/nav-times.json`; exempt paths `/login`, `/checkpoint`, `/uas/`, `/authwall`; only hosts ending in `linkedin.com`.
 - Removal limits, verbatim from the port: `MAX_REMOVALS_PER_CALL = 5`; write gate `MCP_LINKEDIN_WRITE_ENABLED=true`; `confirm=true` required unless `dryRun=true`; en labels only.
 
 ## Review Focus

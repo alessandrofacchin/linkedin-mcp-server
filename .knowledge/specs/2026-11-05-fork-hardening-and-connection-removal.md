@@ -69,7 +69,7 @@ come as that triage continues.
     `core/proxy_errors.py` (`_goto_within_budget` call site). Min gap
     `LINKEDIN_NAV_MIN_GAP` (default 20 s) plus random jitter
     `LINKEDIN_NAV_JITTER` (default 25 s); hard cap `LINKEDIN_NAV_MAX_PER_HOUR`
-    (default 30) that raises instead of waiting; login/checkpoint paths exempt;
+    (default 15; plus `LINKEDIN_NAV_MAX_PER_DAY`, default 50) that raises instead of waiting; login/checkpoint paths exempt;
     timestamps persisted in `~/.linkedin-mcp/nav-times.json` so the budget is
     shared across processes.
   - `patch_open_to_work_send.py` then `patch_open_to_work_send_v2.py` (applied in
