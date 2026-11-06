@@ -24,6 +24,11 @@ def pacing(monkeypatch, tmp_path):
     monkeypatch.delenv("LINKEDIN_NAV_MIN_GAP", raising=False)
     monkeypatch.delenv("LINKEDIN_NAV_JITTER", raising=False)
     monkeypatch.delenv("LINKEDIN_NAV_MAX_PER_HOUR", raising=False)
+    monkeypatch.delenv("LINKEDIN_NAV_MAX_PER_DAY", raising=False)
+    monkeypatch.delenv("LINKEDIN_LOCKOUT_HOURS", raising=False)
+    monkeypatch.setattr(
+        nav_pacing, "LOCKOUT_PATH", tmp_path / "pacing" / "lockout.json"
+    )
     monkeypatch.setattr(nav_pacing, "_now", lambda: NOW)
     monkeypatch.setattr(nav_pacing.random, "uniform", lambda lo, hi: hi)
     sleeps: list[float] = []
@@ -68,11 +73,11 @@ async def test_cap_raises_with_retry_after(pacing):
 
 
 async def test_old_entries_expire(pacing):
-    pacing.write([NOW - 4000] * 30)
+    pacing.write([NOW - 4000] * 30 + [NOW - 90000])
 
     await pace_navigation(URL)
 
-    assert json.loads(pacing.log.read_text()) == [NOW]
+    assert json.loads(pacing.log.read_text()) == [*([NOW - 4000] * 30), NOW]
 
 
 @pytest.mark.parametrize(
@@ -138,3 +143,92 @@ async def test_goto_wrapper_paces_before_navigating(monkeypatch):
 
     pace.assert_awaited_once_with(URL)
     assert order == [f"pace {URL}", f"goto {URL}"]
+
+
+async def test_daily_cap_raises_with_clear_message(pacing):
+    pacing.write([NOW - 4000 - i for i in range(80)])
+
+    with pytest.raises(NavigationBudgetExceeded) as raised:
+        await pace_navigation(URL)
+
+    assert "daily page-load budget reached (80/24h)" in str(raised.value)
+    assert "next slot in 22h 52m" in str(raised.value)
+    assert "Stop LinkedIn work for today." in str(raised.value)
+    assert pacing.sleeps == []
+
+
+async def test_daily_cap_env_override(pacing, monkeypatch):
+    monkeypatch.setenv("LINKEDIN_NAV_MAX_PER_DAY", "2")
+    pacing.write([NOW - 5000, NOW - 6000])
+
+    with pytest.raises(NavigationBudgetExceeded):
+        await pace_navigation(URL)
+
+
+async def test_lockout_blocks_navigation(pacing):
+    nav_pacing.record_lockout("HTTP 429")
+
+    with pytest.raises(NavigationBudgetExceeded) as raised:
+        await pace_navigation(URL)
+
+    assert "locked until" in str(raised.value)
+    assert "after HTTP 429" in str(raised.value)
+    assert "lockout.json" in str(raised.value)
+    assert not pacing.log.exists()
+
+
+async def test_lockout_expires_and_ignores_foreign_hosts(pacing, monkeypatch):
+    nav_pacing.record_lockout("HTTP 429")
+    await pace_navigation("https://example.com/")
+
+    monkeypatch.setattr(nav_pacing, "_now", lambda: NOW + 24 * 3600 + 1)
+    await pace_navigation(URL)
+
+
+async def test_lockout_hours_env(pacing, monkeypatch):
+    monkeypatch.setenv("LINKEDIN_LOCKOUT_HOURS", "1")
+    nav_pacing.record_lockout("x")
+
+    assert json.loads(nav_pacing.LOCKOUT_PATH.read_text())["until"] == NOW + 3600
+
+
+class _Page:
+    def __init__(self, url=URL, error=None, status=200):
+        self.url = url
+        self._error = error
+        self._status = status
+
+    async def goto(self, url, **kwargs):
+        if self._error:
+            raise RuntimeError(self._error)
+        return SimpleNamespace(status=self._status)
+
+
+@pytest.mark.parametrize("status", [429, 999])
+async def test_throttled_response_locks(pacing, status):
+    await goto_reporting_proxy_errors(_Page(status=status), URL)
+
+    assert json.loads(nav_pacing.LOCKOUT_PATH.read_text())["reason"] == f"HTTP {status}"
+
+
+async def test_too_many_redirects_locks(pacing):
+    with pytest.raises(RuntimeError):
+        await goto_reporting_proxy_errors(
+            _Page(error="Page.goto: net::ERR_TOO_MANY_REDIRECTS at x"), URL
+        )
+
+    assert "ERR_TOO_MANY_REDIRECTS" in nav_pacing.LOCKOUT_PATH.read_text()
+
+
+async def test_checkpoint_landing_locks(pacing):
+    page = _Page(url="https://www.linkedin.com/checkpoint/challenge/abc")
+
+    await goto_reporting_proxy_errors(page, URL)
+
+    assert "checkpoint" in nav_pacing.LOCKOUT_PATH.read_text()
+
+
+async def test_healthy_navigation_does_not_lock(pacing):
+    await goto_reporting_proxy_errors(_Page(), URL)
+
+    assert not nav_pacing.LOCKOUT_PATH.exists()

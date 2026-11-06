@@ -152,9 +152,14 @@ def isolate_navigation_pacing(ignore_the_developers_environment, tmp_path, monke
         "linkedin_mcp_server.core.nav_pacing.NAV_LOG_PATH",
         tmp_path / "nav-times.json",
     )
+    monkeypatch.setattr(
+        "linkedin_mcp_server.core.nav_pacing.LOCKOUT_PATH",
+        tmp_path / "lockout.json",
+    )
     monkeypatch.setenv("LINKEDIN_NAV_MIN_GAP", "0")
     monkeypatch.setenv("LINKEDIN_NAV_JITTER", "0")
     monkeypatch.setenv("LINKEDIN_NAV_MAX_PER_HOUR", "1000000")
+    monkeypatch.setenv("LINKEDIN_NAV_MAX_PER_DAY", "1000000")
 
 
 @pytest.fixture(autouse=True)
