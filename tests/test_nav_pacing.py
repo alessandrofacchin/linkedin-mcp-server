@@ -232,3 +232,14 @@ async def test_healthy_navigation_does_not_lock(pacing):
     await goto_reporting_proxy_errors(_Page(), URL)
 
     assert not nav_pacing.LOCKOUT_PATH.exists()
+
+
+async def test_redirect_loop_during_auth_recovery_does_not_lock(pacing):
+    with pytest.raises(RuntimeError):
+        await goto_reporting_proxy_errors(
+            _Page(error="net::ERR_TOO_MANY_REDIRECTS"),
+            "https://www.linkedin.com/feed/",
+            lock_on_redirect_loop=False,
+        )
+
+    assert not nav_pacing.LOCKOUT_PATH.exists()

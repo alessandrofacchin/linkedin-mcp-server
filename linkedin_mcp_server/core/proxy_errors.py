@@ -280,7 +280,9 @@ async def _goto_within_budget(
         await _stop_goto(goto)
 
 
-async def goto_reporting_proxy_errors(page: Any, url: str, **kwargs: Any) -> Any:
+async def goto_reporting_proxy_errors(
+    page: Any, url: str, *, lock_on_redirect_loop: bool = True, **kwargs: Any
+) -> Any:
     """``page.goto(url)``, reporting a proxy fault as :class:`ProxyConnectionError`.
 
     A shared wrapper rather than a check at each call site: the navigations that
@@ -295,7 +297,7 @@ async def goto_reporting_proxy_errors(page: Any, url: str, **kwargs: Any) -> Any
     try:
         response = await _goto_within_budget(page, url, **kwargs)
     except Exception as exc:
-        if "ERR_TOO_MANY_REDIRECTS" in str(exc):
+        if lock_on_redirect_loop and "ERR_TOO_MANY_REDIRECTS" in str(exc):
             record_lockout("net::ERR_TOO_MANY_REDIRECTS")
         raise_if_proxy_error(exc)
         raise

@@ -225,6 +225,7 @@ async def _feed_auth_succeeds(
         await goto_reporting_proxy_errors(
             browser.page,
             "https://www.linkedin.com/feed/",
+            lock_on_redirect_loop=False,
             wait_until="domcontentloaded",
         )
         await stabilize_navigation("feed navigation", logger)
@@ -468,6 +469,7 @@ async def validate_imported_cookies(cookie_path: Path, profile_dir: Path) -> boo
         await goto_reporting_proxy_errors(
             browser.page,
             "https://www.linkedin.com/feed/",
+            lock_on_redirect_loop=False,
             wait_until="domcontentloaded",
         )
         await stabilize_navigation("import pre-validate feed navigation", logger)
@@ -536,6 +538,7 @@ async def _bridge_runtime_profile(
         await goto_reporting_proxy_errors(
             browser.page,
             "https://www.linkedin.com/feed/",
+            lock_on_redirect_loop=False,
             wait_until="domcontentloaded",
         )
         await stabilize_navigation("pre-import feed navigation", logger)
