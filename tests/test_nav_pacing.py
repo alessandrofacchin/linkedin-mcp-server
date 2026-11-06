@@ -157,6 +157,23 @@ async def test_daily_cap_raises_with_clear_message(pacing):
     assert pacing.sleeps == []
 
 
+async def test_daily_cap_over_budget_waits_until_log_drops_below_cap(pacing):
+    pacing.write(
+        [NOW - 80_000 - i for i in range(100)] + [NOW - 4000 - i for i in range(240)]
+    )
+
+    with pytest.raises(NavigationBudgetExceeded) as raised:
+        await pace_navigation(URL)
+
+    assert "next slot in 22h 49m" in str(raised.value)
+
+
+def test_remaining_loads_respects_daily_cap(pacing):
+    pacing.write([NOW - 5000 - i for i in range(235)])
+
+    assert remaining_loads() == 5
+
+
 async def test_daily_cap_env_override(pacing, monkeypatch):
     monkeypatch.setenv("LINKEDIN_NAV_MAX_PER_DAY", "2")
     pacing.write([NOW - 5000, NOW - 6000])
