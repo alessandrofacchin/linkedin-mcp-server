@@ -16,7 +16,8 @@ from patchright.async_api import TimeoutError as PlaywrightTimeoutError
 from linkedin_mcp_server.config.schema import BrowserConfig
 
 from .exceptions import ProxyConnectionError
-from .nav_pacing import pace_navigation
+from .nav_pacing import pace_navigation, record_lockout
+from .throttle import THROTTLED_STATUSES
 
 logger = logging.getLogger(__name__)
 
@@ -279,7 +280,9 @@ async def _goto_within_budget(
         await _stop_goto(goto)
 
 
-async def goto_reporting_proxy_errors(page: Any, url: str, **kwargs: Any) -> Any:
+async def goto_reporting_proxy_errors(
+    page: Any, url: str, *, lock_on_redirect_loop: bool = True, **kwargs: Any
+) -> Any:
     """``page.goto(url)``, reporting a proxy fault as :class:`ProxyConnectionError`.
 
     A shared wrapper rather than a check at each call site: the navigations that
@@ -292,10 +295,22 @@ async def goto_reporting_proxy_errors(page: Any, url: str, **kwargs: Any) -> Any
     """
     await pace_navigation(url)
     try:
-        return await _goto_within_budget(page, url, **kwargs)
+        response = await _goto_within_budget(page, url, **kwargs)
     except Exception as exc:
+        if lock_on_redirect_loop and "ERR_TOO_MANY_REDIRECTS" in str(exc):
+            record_lockout("net::ERR_TOO_MANY_REDIRECTS")
         raise_if_proxy_error(exc)
         raise
+    _lock_on_restriction(url, response, page)
+    return response
+
+
+def _lock_on_restriction(url: str, response: Any, page: Any) -> None:
+    status = getattr(response, "status", None)
+    if status in THROTTLED_STATUSES:
+        record_lockout(f"HTTP {status}")
+    elif "/checkpoint/" in str(getattr(page, "url", "")) and "/checkpoint/" not in url:
+        record_lockout("a LinkedIn checkpoint page")
 
 
 def proxy_hint() -> str:
