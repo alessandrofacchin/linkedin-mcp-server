@@ -67,7 +67,13 @@ def _write_times(times: list[float]) -> None:
 
 def remaining_loads(now: float | None = None) -> int:
     now = _now() if now is None else now
-    return max(0, _max_per_hour() - len(_recent_times(now)))
+    return max(
+        0,
+        min(
+            _max_per_hour() - len(_recent_times(now)),
+            _max_per_day() - len(_day_times(now)),
+        ),
+    )
 
 
 def loads_needed_fit(n: int) -> bool:
@@ -115,7 +121,7 @@ async def pace_navigation(url: str) -> None:
     per_day = _max_per_day()
     day = _day_times(now)
     if len(day) >= per_day:
-        retry_after = int(_DAY_SECONDS - (now - min(day)))
+        retry_after = int(_DAY_SECONDS - (now - sorted(day)[len(day) - per_day]))
         raise NavigationBudgetExceeded(
             f"Local LinkedIn daily page-load budget reached ({per_day}/24h); "
             f"next slot in {_duration(retry_after)}. "
