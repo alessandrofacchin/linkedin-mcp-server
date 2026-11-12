@@ -27,8 +27,13 @@ unconfirmed. Alessandro asked for a hard ceiling: never above 10 GB.
 - During the call, a watcher measures every 2 s. Over the limit: it closes the
   browser, and the call fails with `browser_unavailable`. A write already cut
   short with `outcome_unknown` keeps that code, so nobody retries a send that
-  may have happened.
+  may have happened. A call that still returns (a tool that maps the closed page
+  to its own status, such as `send_unconfirmed`) keeps its result, with a notice
+  appended to its content saying the result may be incomplete.
+- A triggered close always finishes, even when the call ends first.
 - Limit: `LINKEDIN_BROWSER_MAX_MEMORY_GB`, default 10.
+- POSIX only. Where usage cannot be measured (Windows, no `ps`), the server logs
+  once that the limit is not enforced.
 
 ## Trade-offs
 
@@ -42,3 +47,10 @@ unconfirmed. Alessandro asked for a hard ceiling: never above 10 GB.
   between that check and the tool body.
 - Browsers whose owner died are measured but never killed: the server cannot
   prove it owns them. The refusal names the usage so a person can end them.
+- The limit is read from each process's environment and is not part of the
+  shared owner's config fingerprint, so a frontend started with a different
+  value proxies to an owner enforcing its own. Same model as `LINKEDIN_NAV_*`;
+  one user runs one config, so the fingerprint change was not worth it.
+- The guard sits in the tool middleware. The interactive login browser that
+  `setup.py` launches is outside it: it is still counted by the next tool
+  call's pre-check, but nothing caps it while it runs.

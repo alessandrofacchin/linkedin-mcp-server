@@ -196,9 +196,15 @@ class SequentialToolExecutionMiddleware(Middleware):
             # this one would otherwise be offered as the diagnosis of a
             # failure they had nothing to do with.
             with browser_call_record():
-                return await run_within_memory_limit(
+                result, breach = await run_within_memory_limit(
                     lambda: call_next(context), close_browser
                 )
+            if breach is not None:
+                result.content = [
+                    *result.content,
+                    mt.TextContent(type="text", text=str(breach)),
+                ]
+            return result
         except BrowserMemoryExceeded as exc:
             cut = exc.__cause__
             code = (

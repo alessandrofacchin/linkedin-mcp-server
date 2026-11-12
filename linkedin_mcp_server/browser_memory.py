@@ -12,6 +12,7 @@ T = TypeVar("T")
 
 _GB = 1024**3
 _WATCH_INTERVAL_SECONDS = 2.0
+_warned_unmeasured = False
 
 
 class BrowserMemoryExceeded(RuntimeError):
@@ -27,8 +28,17 @@ def memory_limit_bytes() -> int:
 
 
 async def _usage_over_limit() -> int | None:
+    global _warned_unmeasured
     used = await asyncio.to_thread(browser_memory_bytes)
-    if used is None or used < memory_limit_bytes():
+    if used is None:
+        if not _warned_unmeasured:
+            _warned_unmeasured = True
+            logger.warning(
+                "Browser memory cannot be measured here, so "
+                "LINKEDIN_BROWSER_MAX_MEMORY_GB is not enforced"
+            )
+        return None
+    if used < memory_limit_bytes():
         return None
     return used
 
@@ -50,7 +60,7 @@ async def ensure_memory_headroom(close_browser: Callable[[], Awaitable[None]]) -
 async def run_within_memory_limit(
     call: Callable[[], Awaitable[T]],
     close_browser: Callable[[], Awaitable[None]],
-) -> T:
+) -> tuple[T, BrowserMemoryExceeded | None]:
     breach: int | None = None
 
     async def watch() -> None:
@@ -62,11 +72,16 @@ async def run_within_memory_limit(
             "LinkedIn MCP browsers reached %.1f GB; closing this server's browser",
             breach / _GB,
         )
-        await close_browser()
+        try:
+            await close_browser()
+        except Exception:
+            logger.warning(
+                "Closing the browser over the memory limit failed", exc_info=True
+            )
 
     watcher = asyncio.create_task(watch(), name="linkedin-browser-memory")
     try:
-        return await call()
+        result = await call()
     except Exception as exc:
         if breach is None:
             raise
@@ -76,5 +91,13 @@ async def run_within_memory_limit(
             "The browser was closed during this call.",
         ) from exc
     finally:
-        watcher.cancel()
-        await asyncio.gather(watcher, return_exceptions=True)
+        if breach is None:
+            watcher.cancel()
+        await asyncio.wait([watcher])
+    if breach is None:
+        return result, None
+    return result, BrowserMemoryExceeded(
+        breach,
+        memory_limit_bytes(),
+        "The browser was closed during this call, so this result may be incomplete.",
+    )

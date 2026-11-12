@@ -7,7 +7,9 @@ import time
 from types import SimpleNamespace
 from unittest.mock import AsyncMock, MagicMock
 
+import mcp.types as mt
 import pytest
+from fastmcp.tools import ToolResult
 
 from linkedin_mcp_server import browser_memory, process_tree
 from linkedin_mcp_server.browser_memory import (
@@ -29,6 +31,7 @@ _SLEEPER = [sys.executable, "-c", "import time; time.sleep(60)"]
 def memory(monkeypatch):
     monkeypatch.delenv("LINKEDIN_BROWSER_MAX_MEMORY_GB", raising=False)
     monkeypatch.setattr(browser_memory, "_WATCH_INTERVAL_SECONDS", 0.01)
+    monkeypatch.setattr(browser_memory, "_warned_unmeasured", False)
     state = SimpleNamespace(used=0)
     monkeypatch.setattr(browser_memory, "browser_memory_bytes", lambda: state.used)
     return state
@@ -101,13 +104,16 @@ async def test_headroom_refuses_when_closing_this_browser_is_not_enough(memory):
     close.assert_awaited_once()
 
 
-async def test_unknown_usage_does_not_block(memory):
+async def test_unknown_usage_does_not_block_and_warns_once(memory, caplog):
     memory.used = None
     close = AsyncMock()
 
     await ensure_memory_headroom(close)
+    await ensure_memory_headroom(close)
 
     close.assert_not_awaited()
+    warnings = [r for r in caplog.records if "not enforced" in r.getMessage()]
+    assert len(warnings) == 1
 
 
 async def test_a_call_under_the_limit_returns_its_result(memory):
@@ -118,8 +124,47 @@ async def test_a_call_under_the_limit_returns_its_result(memory):
         await asyncio.sleep(0.05)
         return "done"
 
-    assert await run_within_memory_limit(call, close) == "done"
+    assert await run_within_memory_limit(call, close) == ("done", None)
     close.assert_not_awaited()
+
+
+async def test_a_call_that_returns_despite_a_breach_reports_it(memory):
+    closed = asyncio.Event()
+
+    async def close() -> None:
+        closed.set()
+
+    async def call() -> str:
+        memory.used = 11 * GB
+        await closed.wait()
+        return "send unconfirmed"
+
+    result, breach = await run_within_memory_limit(call, close)
+
+    assert result == "send unconfirmed"
+    assert breach is not None
+    assert "11.0 GB" in str(breach)
+    assert "may be incomplete" in str(breach)
+
+
+async def test_a_triggered_close_finishes_after_the_call_ends(memory):
+    started = asyncio.Event()
+    finished = asyncio.Event()
+
+    async def close() -> None:
+        started.set()
+        await asyncio.sleep(0.2)
+        finished.set()
+
+    async def call() -> str:
+        memory.used = 11 * GB
+        await started.wait()
+        raise RuntimeError("Target page, context or browser has been closed")
+
+    with pytest.raises(BrowserMemoryExceeded):
+        await run_within_memory_limit(call, close)
+
+    assert finished.is_set()
 
 
 async def test_crossing_the_limit_mid_call_closes_the_browser(memory):
@@ -236,3 +281,34 @@ async def test_middleware_releases_the_lease_when_the_headroom_check_fails(
         await SequentialToolExecutionMiddleware().on_call_tool(_context(), AsyncMock())
 
     lease.release.assert_called_once()
+
+
+async def test_middleware_adds_a_notice_to_a_result_returned_despite_a_breach(
+    memory, monkeypatch
+):
+    closed = asyncio.Event()
+
+    async def close() -> None:
+        closed.set()
+
+    monkeypatch.setattr("linkedin_mcp_server.drivers.browser.close_browser", close)
+
+    async def unconfirmed_send(_context):
+        memory.used = 11 * GB
+        await closed.wait()
+        return ToolResult(
+            content=[mt.TextContent(type="text", text="send unconfirmed")],
+            structured_content={"status": "send_unconfirmed", "retry_safe": False},
+        )
+
+    result = await SequentialToolExecutionMiddleware().on_call_tool(
+        _context("send_message"), AsyncMock(side_effect=unconfirmed_send)
+    )
+
+    assert result.structured_content == {
+        "status": "send_unconfirmed",
+        "retry_safe": False,
+    }
+    texts = [item.text for item in result.content if isinstance(item, mt.TextContent)]
+    assert texts[0] == "send unconfirmed"
+    assert "11.0 GB" in texts[-1]
