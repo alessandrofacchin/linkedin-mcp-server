@@ -11,6 +11,7 @@ knowledge lives under `docs/`.
 ## Specs
 
 - [Pinned fork with pacing, send fixes and connection removal](specs/2026-11-05-fork-hardening-and-connection-removal.md)
+- [Browser memory cap](specs/2026-11-12-browser-memory-cap.md)
 
 ## Plans
 
