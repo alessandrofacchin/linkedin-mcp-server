@@ -418,6 +418,58 @@ def _scan_marked_posix_processes(
     return _MarkerScan(tuple(found), True)
 
 
+def browser_memory_bytes() -> int | None:
+    """Resident memory of every marked browser process, any launch; None if unscannable."""
+    if os.name == "nt":
+        return None
+    name = f"{_BROWSER_PROCESS_MARKER}=".encode()
+    if sys.platform.startswith("linux"):
+        page = os.sysconf("SC_PAGE_SIZE")
+        total = 0
+        for entry in Path("/proc").iterdir():
+            if not entry.name.isdigit():
+                continue
+            try:
+                environment = (entry / "environ").read_bytes().split(b"\0")
+                if not any(item.startswith(name) for item in environment):
+                    continue
+                total += int((entry / "statm").read_text().split()[1]) * page
+            except (OSError, ValueError, IndexError):
+                continue
+        return total
+
+    ps = next(
+        (
+            candidate
+            for candidate in ("/bin/ps", "/usr/bin/ps")
+            if Path(candidate).is_file()
+        ),
+        None,
+    )
+    if ps is None:
+        return None
+    try:
+        snapshot = subprocess.run(
+            [ps, "eww", "-A", "-o", "pid=", "-o", "rss=", "-o", "command="],
+            check=True,
+            capture_output=True,
+            timeout=_MARKER_SCAN_SECONDS,
+        ).stdout
+    except (OSError, subprocess.SubprocessError):
+        return None
+    needle = b" " + name
+    total = 0
+    for line in snapshot.splitlines():
+        fields = line.split(maxsplit=2)
+        if len(fields) != 3 or needle not in b" " + fields[2]:
+            continue
+        try:
+            total += int(fields[1]) * 1024
+        except ValueError:
+            continue
+    return total
+
+
 def _posix_detached_descendants(
     pid: int, process_group: int
 ) -> tuple[tuple[int, int, str], ...]:

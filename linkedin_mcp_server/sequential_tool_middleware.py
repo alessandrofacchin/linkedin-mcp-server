@@ -12,6 +12,11 @@ import mcp.types as mt
 from fastmcp.server.middleware import CallNext, Middleware, MiddlewareContext
 from fastmcp.tools import ToolResult
 
+from linkedin_mcp_server.browser_memory import (
+    BrowserMemoryExceeded,
+    ensure_memory_headroom,
+    run_within_memory_limit,
+)
 from linkedin_mcp_server.config import get_config
 from linkedin_mcp_server.daemon.liveness import (
     abandoned_before_browser_work,
@@ -130,6 +135,7 @@ class SequentialToolExecutionMiddleware(Middleware):
         # `core/__init__`, which imports patchright.
         from linkedin_mcp_server.core.throttle import browser_call_record
         from linkedin_mcp_server.drivers.browser import (
+            close_browser,
             note_activity,
             note_call_started,
             release_profile_if_idle_or_requested,
@@ -159,6 +165,14 @@ class SequentialToolExecutionMiddleware(Middleware):
         # For good: the startup observation no longer describes the holder.
         self._silent_owner = None
 
+        try:
+            await ensure_memory_headroom(close_browser)
+        except BaseException as exc:
+            lease.release()
+            if isinstance(exc, BrowserMemoryExceeded):
+                raise CodedToolError(str(exc), ErrorCode.BROWSER_UNAVAILABLE) from exc
+            raise
+
         # After every wait this call can spend queued, and before the browser is
         # touched: the last point at which an owner can still decline work its
         # client has given up on. Nothing awaits between here and the body.
@@ -182,7 +196,18 @@ class SequentialToolExecutionMiddleware(Middleware):
             # this one would otherwise be offered as the diagnosis of a
             # failure they had nothing to do with.
             with browser_call_record():
-                return await call_next(context)
+                return await run_within_memory_limit(
+                    lambda: call_next(context), close_browser
+                )
+        except BrowserMemoryExceeded as exc:
+            cut = exc.__cause__
+            code = (
+                ErrorCode.OUTCOME_UNKNOWN
+                if isinstance(cut, CodedToolError)
+                and cut.code is ErrorCode.OUTCOME_UNKNOWN
+                else ErrorCode.BROWSER_UNAVAILABLE
+            )
+            raise CodedToolError(f"{exc} {cut}", code) from exc
         finally:
             hold_seconds = time.perf_counter() - hold_started
             logger.debug(
